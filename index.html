@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thống kê số Vietlott 2026</title>
+<style>
+:root{--bg:#f6f7f4;--fg:#1d2420;--mut:#66706a;--card:#fff;--line:#dfe3dc;--bar:#1f6f5c;--hot:#c8372d}
+@media (prefers-color-scheme:dark){:root{--bg:#121714;--fg:#e8ede9;--mut:#93a09a;--card:#1a211d;--line:#2b352f;--bar:#4fb59b;--hot:#ff7a6e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 Georgia,"Times New Roman",serif}
+main{max-width:860px;margin:0 auto;padding:28px 18px 60px}
+h1{font-size:clamp(1.7rem,5vw,2.4rem);margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--mut);font-family:system-ui,sans-serif;font-size:.9rem;margin:0 0 22px}
+.bar-tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-family:system-ui,sans-serif;margin-bottom:18px}
+button,select{font:inherit;font-size:.95rem;padding:8px 14px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:6px;cursor:pointer}
+button[aria-pressed=true]{background:var(--bar);color:#fff;border-color:var(--bar)}
+button:focus-visible,select:focus-visible{outline:3px solid var(--hot);outline-offset:2px}
+.stats{display:flex;gap:26px;flex-wrap:wrap;margin:0 0 20px;font-family:system-ui,sans-serif}
+.stats b{display:block;font:700 1.6rem Georgia,serif}
+.stats span{color:var(--mut);font-size:.85rem}
+ol{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--line);border-radius:8px}
+li{display:grid;grid-template-columns:2.2rem 3rem 1fr 3.2rem;gap:10px;align-items:center;padding:8px 14px;border-top:1px solid var(--line);font-family:system-ui,sans-serif}
+li:first-child{border-top:0}
+.rk{color:var(--mut);font-size:.85rem}
+.num{font:700 1.25rem Georgia,serif}
+.track{height:12px;background:var(--line);border-radius:3px;overflow:hidden}
+.fill{height:100%;background:var(--bar)}
+li:nth-child(-n+3) .fill{background:var(--hot)}
+.cnt{text-align:right;font-variant-numeric:tabular-nums}
+#msg{font-family:system-ui,sans-serif;color:var(--mut);padding:20px 0}
+.err{color:var(--hot)}
+footer{margin-top:26px;font:.82rem/1.5 system-ui,sans-serif;color:var(--mut)}
+</style>
+</head>
+<body>
+<main>
+<h1>Số xuất hiện nhiều nhất năm 2026</h1>
+<p class="sub" id="upd">Đang tải dữ liệu…</p>
+
+<div class="bar-tools">
+  <span role="group" aria-label="Chọn loại vé" id="games"></span>
+  <label>Hiển thị
+    <select id="top"><option>10</option><option selected>15</option><option>25</option><option value="999">Tất cả</option></select>
+  </label>
+  <label><input type="checkbox" id="bonus"> Tính cả số phụ (Power 6/55)</label>
+</div>
+
+<div class="stats" id="stats"></div>
+<div id="msg" hidden></div>
+<ol id="list" aria-live="polite"></ol>
+
+<footer>
+  Nguồn: kết quả quay thưởng trên vietlott.vn, được cập nhật tự động mỗi ngày bởi GitHub Actions.
+  Xổ số là ngẫu nhiên, mỗi kỳ quay độc lập: số “nóng” trong quá khứ không làm tăng cơ hội trúng ở kỳ sau.
+</footer>
+</main>
+
+<script>
+const YEAR = 2026;
+const GAMES = { "645": "Mega 6/45", "655": "Power 6/55" };
+let cur = "645", cache = {};
+
+const $ = id => document.getElementById(id);
+
+function buildTabs(){
+  const box = $("games");
+  Object.entries(GAMES).forEach(([k,name])=>{
+    const b = document.createElement("button");
+    b.textContent = name; b.dataset.k = k;
+    b.setAttribute("aria-pressed", k===cur);
+    b.onclick = ()=>{ cur=k; [...box.children].forEach(x=>x.setAttribute("aria-pressed", x.dataset.k===k)); render(); };
+    box.append(b);
+  });
+}
+
+async function load(k){
+  if(cache[k]) return cache[k];
+  const r = await fetch(`data/${k}.json?t=${Date.now()}`);
+  if(!r.ok) throw new Error(`Không tải được data/${k}.json (HTTP ${r.status})`);
+  return cache[k] = await r.json();
+}
+
+async function render(){
+  const msg = $("msg"), list = $("list");
+  msg.hidden = true; list.innerHTML = ""; $("stats").innerHTML = "";
+  let data;
+  try { data = await load(cur); }
+  catch(e){ msg.hidden=false; msg.className="err"; msg.textContent=e.message+". Hãy chạy workflow cập nhật dữ liệu trước."; return; }
+
+  const draws = (data.draws||[]).filter(d => d.date.startsWith(YEAR+"-"));
+  $("upd").textContent = data.updated ? `Cập nhật lần cuối: ${new Date(data.updated).toLocaleString("vi-VN")}` : "";
+  if(!draws.length){ msg.hidden=false; msg.className=""; msg.textContent="Chưa có kỳ quay nào của năm "+YEAR+" trong dữ liệu."; return; }
+
+  const withBonus = $("bonus").checked && cur==="655";
+  const max = cur==="645" ? 45 : 55, freq = {};
+  for(let i=1;i<=max;i++) freq[i]=0;
+  draws.forEach(d=>{
+    d.numbers.forEach(n=>freq[n]++);
+    if(withBonus && d.bonus) freq[d.bonus]++;
+  });
+  const rows = Object.entries(freq).map(([n,c])=>[+n,c]).sort((a,b)=>b[1]-a[1]||a[0]-b[0]);
+  const top = +$("top").value, peak = rows[0][1] || 1;
+
+  $("stats").innerHTML =
+    `<div><b>${draws.length}</b><span>kỳ quay trong ${YEAR}</span></div>`+
+    `<div><b>${draws[0].date.split("-").reverse().join("/")}</b><span>kỳ mới nhất</span></div>`;
+
+  rows.slice(0,top).forEach(([n,c],i)=>{
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="rk">#${i+1}</span><span class="num">${String(n).padStart(2,"0")}</span>
+      <span class="track"><span class="fill" style="display:block;width:${c/peak*100}%"></span></span>
+      <span class="cnt">${c} lần</span>`;
+    list.append(li);
+  });
+}
+
+$("top").onchange = render; $("bonus").onchange = render;
+buildTabs(); render();
+</script>
+</body>
+</html>
